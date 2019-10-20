@@ -1,0 +1,123 @@
+---
+title: "Data Exploration"
+output: html_notebook
+---
+
+
+
+```{r}
+library(tidyverse)
+library(ggcorrplot)
+library(GGally)
+library(caret)
+library(Hmisc)
+```
+
+```{r}
+df <- read_csv("../data/train.csv")
+str(df)
+head(df)
+```
+
+```{r}
+df %>%
+    filter(NflIdRusher == NflId) %>% # only keep players whom actually were doing the rushing
+    group_by(NflIdRusher, DisplayName, Season) %>%
+    summarise(Yards = sum(Yards)) %>%
+    arrange(desc(Yards)) %>%
+    head(10)
+```
+
+Create a new data frame that only has one row for each play.
+
+```{r}
+df_tidy <- df %>%
+    filter(NflIdRusher == NflId) %>% # keep only one record per play
+    select(GameId, PlayId, Team, Season, YardLine, Quarter, 
+           PossessionTeam, Down, Distance, FieldPosition, HomeScoreBeforePlay,
+           VisitorScoreBeforePlay, NflIdRusher, OffenseFormation, OffensePersonnel,
+           DefendersInTheBox, PlayDirection, TimeHandoff, TimeSnap, HomeTeamAbbr,
+           VisitorTeamAbbr, Week, Stadium, Location, StadiumType, Turf, GameWeather,
+           Temperature, Humidity, WindSpeed, WindDirection,
+           Yards) 
+    
+df_tidy
+```
+
+Review correlation between rushing yards and all the other variables.
+
+```{r}
+df_corr <- cor(df_tidy %>% select_if(is.numeric)) %>% round(2) %>% replace_na(0)
+as_tibble(df_corr)
+ggcorrplot(df_corr, hc.order = TRUE, type = "lower", outline.color = "white")
+```
+
+```{r}
+# Team
+df_tidy %>%
+    ggplot(aes(x = Team, y = Yards)) +
+        geom_boxplot(alpha = 0.5) +
+        geom_jitter()
+```
+
+```{r}
+# YardLine
+df_tidy %>%
+    ggplot(aes(x = YardLine, y = Yards)) +
+        geom_point(alpha = 0.5) + 
+        geom_smooth()
+```
+
+```{r}
+# Down
+df_tidy %>%
+    mutate(Down = as.factor(Down)) %>%
+    ggplot(aes(x = Down, y = Yards)) +
+        geom_jitter() +
+        geom_boxplot(alpha = 0.5)
+```
+
+```{r}
+# HomeScoreBeforePlay
+df_tidy %>%
+    ggplot(aes(x = HomeScoreBeforePlay, y = Yards)) +
+        geom_jitter() +
+        geom_point(alpha = 0.5) + 
+        geom_smooth()
+```
+
+```{r}
+# VisitorScoreBeforePlay
+df_tidy %>%
+    ggplot(aes(x = VisitorScoreBeforePlay, y = Yards)) +
+        geom_jitter() +
+        geom_point(alpha = 0.5) + 
+        geom_smooth()
+```
+
+```{r}
+# Down
+df_tidy %>%
+    ggplot(aes(x = Distance, y = Yards)) +
+        geom_jitter() +
+        geom_point(alpha = 0.5) + 
+        geom_smooth()
+```
+
+```{r}
+# Turf
+df_tidy %>%
+    mutate(Turf = as.factor(Turf)) %>%
+    ggplot(aes(x = Turf, y = Yards)) +
+        geom_jitter() +
+        geom_boxplot(alpha = 0.5)
+```
+
+```{r}
+# GameWeather
+df_tidy %>%
+    mutate(GameWeather = as.factor(GameWeather)) %>%
+    ggplot(aes(x = GameWeather, y = Yards)) +
+        geom_jitter() +
+        geom_boxplot(alpha = 0.5)
+```
