@@ -59,7 +59,8 @@ train_features <- train %>%
   filter(nfl_id_rusher == nfl_id) %>%
   select(game_id, play_id, team, x_std, y_std, line_of_scrimmage, yards_to_first_down, yards_to_td, yards_from_own_goal, 
          down,
-         defenders_in_the_box, defense_personnel, s, a)
+         defenders_in_the_box, defense_personnel, s, a,
+         rushing_yards)
 
 
 ## Feature: distance from ball carrier ----
@@ -71,11 +72,25 @@ train <- train %>%
   mutate(yards_from_ball_carrier = sqrt(abs(x_std - ball_carrier_x_std)^2 + abs(y_std - ball_carrier_y_std)^2))
 
 mean_yards_from_ball_carrier_df <- train %>%
-  mutate(is_on_offense = if_else(is_on_offense, "mean_yards_from_ball_carrier_offense", "mean_yards_from_ball_carrier_defense")) %>%
+  mutate(is_on_offense = if_else(is_on_offense, "offense", "defense")) %>%
   group_by(play_id, is_on_offense) %>%
-  summarise(mean_yards_from_ball_carrier = mean(yards_from_ball_carrier)) %>%
-  pivot_wider(names_from = is_on_offense, values_from = mean_yards_from_ball_carrier) %>%
-  mutate(mean_yards_from_ball_carrier_all = (mean_yards_from_ball_carrier_offense + mean_yards_from_ball_carrier_defense) / 2) %>%
+  summarise(
+    yards_from_ball_carrier_mean = mean(yards_from_ball_carrier),
+    yards_from_ball_carrier_min = min(yards_from_ball_carrier)
+    ) %>%
+  ungroup() %>%
+  pivot_longer(
+    names_to = "x", 
+    values_to = "y",
+    cols = -play_id:is_on_offense
+  ) %>%
+  pivot_wider(
+    names_from = is_on_offense, 
+    values_from = yards_from_ball_carrier_mean, yards_from_ball_carrier_min
+    ) %>%
+  mutate(
+    yards_from_ball_carrier_mean_all = (mean_yards_from_ball_carrier_offense + mean_yards_from_ball_carrier_defense) / 2
+    ) %>%
   ungroup()
 
 train_features <- train_features %>%
