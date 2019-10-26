@@ -1,19 +1,21 @@
+library(caret)
 library(janitor)
 library(tidyverse)
 options(scipen = 999)
+set.seed(2019-10-25)
 
-# CLEAN DATA ----
+# READ DATA ----
 
 # read data
 raw <- read_csv("data/train.csv", col_types = cols())
 train <- raw
 
-# clean column names
-train <- train %>%
-  clean_names()
+# CLEAN DATA ----
 
-# correcting team names
+# clean raw data
 train <- train %>%
+  clean_names() %>%
+  # normalize names
   mutate(
     visitor_team_abbr = case_when(
       visitor_team_abbr == "ARI" ~ "ARZ",
@@ -28,10 +30,8 @@ train <- train %>%
       home_team_abbr == "HOU" ~ "HST",
       TRUE ~ home_team_abbr
     )
-  )
-
-# normalize field positioning data
-train <- train %>%
+  ) %>%
+  # normalize field position
   rename(
     line_of_scrimmage = yard_line,
     rushing_yards = yards,
@@ -43,7 +43,7 @@ train <- train %>%
     team_on_offense = ifelse(home_team_abbr == possession_team, "home", "away"),
     is_on_offense = team == team_on_offense, # is player on offense
     yards_from_own_goal = ifelse(as.character(field_position) == possession_team,
-      line_of_scrimmage, 50 + (50 - line_of_scrimmage)
+                                 line_of_scrimmage, 50 + (50 - line_of_scrimmage)
     ),
     yards_from_own_goal = ifelse(line_of_scrimmage == 50, 50, yards_from_own_goal),
     yards_to_td = 100 - yards_from_own_goal,
@@ -54,24 +54,25 @@ train <- train %>%
 # CREATE FEATURES ----
 
 # create a new data frame that has only one row for each play
-
 train_features <- train %>%
   filter(nfl_id_rusher == nfl_id) %>%
-  select(game_id, play_id, team, x_std, y_std, line_of_scrimmage, yards_to_first_down, yards_to_td, yards_from_own_goal, 
-         down,
+  select(game_id, play_id, team, x_std, y_std, line_of_scrimmage,
+         yards_to_first_down, yards_to_td, yards_from_own_goal, down,
          defenders_in_the_box, defense_personnel, s, a,
          rushing_yards)
 
 
 ## Feature: distance from ball carrier ----
 
+# calculate distance from ball carrier
 train <- train %>%
   left_join(
     select(train_features, play_id, ball_carrier_x_std = x_std, ball_carrier_y_std = y_std),
     by = c("play_id", "play_id")) %>%
   mutate(yards_from_ball_carrier = sqrt(abs(x_std - ball_carrier_x_std)^2 + abs(y_std - ball_carrier_y_std)^2))
 
-mean_yards_from_ball_carrier_df <- train %>%
+# calculate more stats: min and mean from ball carrier
+yards_from_ball_carrier_df <- train %>%
   mutate(is_on_offense = if_else(is_on_offense, "offense", "defense")) %>%
   group_by(play_id, is_on_offense) %>%
   summarise(
@@ -80,22 +81,22 @@ mean_yards_from_ball_carrier_df <- train %>%
     ) %>%
   ungroup() %>%
   pivot_longer(
-    names_to = "x", 
-    values_to = "y",
-    cols = -play_id:is_on_offense
+    names_to = "measure", 
+    values_to = "yards_from",
+    cols = c(-play_id, -is_on_offense)
   ) %>%
   pivot_wider(
-    names_from = is_on_offense, 
-    values_from = yards_from_ball_carrier_mean, yards_from_ball_carrier_min
-    ) %>%
+    names_from = c(is_on_offense, measure),
+    values_from = yards_from
+  ) %>% 
   mutate(
-    yards_from_ball_carrier_mean_all = (mean_yards_from_ball_carrier_offense + mean_yards_from_ball_carrier_defense) / 2
-    ) %>%
+    all_yards_from_ball_carrier_mean = (offense_yards_from_ball_carrier_mean + defense_yards_from_ball_carrier_mean) / 2
+  ) %>%
   ungroup()
 
+# join new features back to train_features
 train_features <- train_features %>%
-  left_join(mean_yards_from_ball_carrier_df, by = c("play_id", "play_id"))
-
+  left_join(yards_from_ball_carrier_df, by = c("play_id", "play_id"))
 
 
 ## Feature: defense personnel ----
@@ -133,12 +134,21 @@ train_features <- train_features %>%
 
 # EXPORT DATA ----
 
+# partition data
+`%notin%` <- Negate(`%in%`)
+train_play_ids <- sample(raw$PlayId %>% unique(), floor(23171 * 0.75))
 
-write_csv(train, "data/train_clean.csv")
-write_csv(train_features, "data/train_features.csv")
+train_out <- train %>% filter(play_id %in% train_play_ids)
+train_features_out <- train_features %>% filter(play_id %in% train_play_ids)
+test_features_out <- train_features %>% filter(play_id %notin% train_play_ids)
+
+# write data
+write_csv(train_out, "data/train_clean.csv")
+write_csv(train_features_out, "data/train_features.csv")
+write_csv(test_features_out, "data/test_features.csv")
 
 
 # EXPLORE ----
 
-View(train %>% head(100))
-View(train_features %>% head(100))
+# View(train %>% head(100))
+# View(train_features %>% head(100))
